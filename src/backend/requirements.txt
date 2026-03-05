@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+langgraph
+langchain
+langchain-openai
+langchain-community  # 确保有这个，处理工具集
+firecrawl-py
+python-dotenv
+supabase
+pydantic
+requests             # Serper 通常直接用 requests 调用 API
