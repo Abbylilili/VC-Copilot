@@ -30,10 +30,4 @@ This project is a high-fidelity demo designed for a VC daily work. it demonstrat
 4. **Step 3 (Investment Committee)**: Fact-checking -> Rubric-based Scoring -> Risk Flagging.
 5. **Output**: Multi-tab Investment Memo + Final Deal Score (e.g., 7.8/10).
 
-## 🛠️ Getting Started
 
-*(Installation and setup instructions will be added as implementation progresses.)*
-
----
-
-**Interview Context**: *“This project demonstrates how to mitigate LLM hallucinations by decoupling agent responsibilities. By using a specialized Researcher-Analyst-Scorer pipeline, we ensure that every investment score is backed by retrieved evidence and structured logic.”*
