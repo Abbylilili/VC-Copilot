@@ -20,7 +20,7 @@ def scorer_node(state: AgentState):
     report = state.get('report_content', "")
     
     # Fallback if no report was generated
-    if not report or "failed" in report:
+    if not report or "failed" in report.lower():
         return {
             "scores": {"innovation": 0, "market": 0, "team": 0, "moat": 0},
             "risk_flags": ["Missing or Invalid Report Content"],
