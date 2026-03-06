@@ -1,18 +1,34 @@
-from typing import List, TypedDict, Dict
+from typing import List, TypedDict, Dict, Any
 
 class AgentState(TypedDict):
-    """Defines the state of an agent, including its name, description, and current task."""
+    """
+    The state of the investment copilot agent.
+    Includes fields for automated research, human refinement, and internal debate.
+    """
+    # --- Input Layer ---
     name: str
-    description: str
     website: str
     industry: str
-
-    raw_research_data:List[str]
-
-    report_content: str
-
+    
+    # --- Research & Evidence (Researcher Agent) ---
+    raw_research_data: List[str] 
+    
+    # --- Human Refinement (Manual Input) ---
+    human_notes: str 
+    
+    # --- Virtual IC Debate (Committee Agent) ---
+    debate_transcript: List[str]
+    
+    # --- Final Output Layer (Analyst & Scorer) ---
+    report_content: str 
+    
+    # Quantitative scores and risk assessment.
     scores: Dict[str, int]
     risk_flags: List[str]
     final_score: float
-
+    
+    # The simulated vote result (e.g., "INVEST (3/3 Yes Votes)").
+    vote_summary: str
+    
+    # --- Flow Control ---
     analysis_complete: bool

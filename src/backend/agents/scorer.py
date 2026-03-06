@@ -4,84 +4,91 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from .state import AgentState
 
-# Initialize LLM with strict JSON response format
-# We use temperature 0.1 for high consistency in scoring
+# Initialize LLM with strict JSON formatting
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.1).bind(
+    # Ensure standard JSON output for reliable parsing
     response_format={"type": "json_object"}
 )
 
 def scorer_node(state: AgentState):
     """
-    Scorer Node: Critically evaluates the Technical Investment Memo and outputs 
-    quantitative scores and risk flags in JSON format.
+    Scorer Node: Simulates a Global Partner Vote (3-Yes System).
+    Evaluates based on Founder DNA, Category Creation, and Moat.
     """
-    print(f"\n--- [Scorer Agent] Scoring the Technical Memo for: {state.get('name')} ---")
+    print(f"\n--- [Scorer Agent] Simulating Global Partner Vote for: {state.get('name')} ---")
     
     report = state.get('report_content', "")
     
-    # Fallback if no report was generated
-    if not report or "failed" in report.lower():
+    if not report or "failed" in report:
         return {
-            "scores": {"innovation": 0, "market": 0, "team": 0, "moat": 0},
-            "risk_flags": ["Missing or Invalid Report Content"],
+            "scores": {"team_dna": 0, "category": 0, "moat": 0, "economics": 0},
+            "risk_flags": ["Briefing Note Missing"],
             "final_score": 0.0,
+            "vote_summary": "Process Failed",
             "analysis_complete": False
         }
 
     system_prompt = """
-    You are an Investment Committee (IC) Member at a Deep Tech Venture Capital firm.
-    Your task is to critically evaluate a Technical Investment Memo and provide quantitative scores (1-10) and risk assessments.
+    You are the Global Investment Committee (IC) of a top-tier early-stage VC firm.
+    Our process requires THREE 'YES' votes from the partners to issue a term sheet.
 
-    Evaluation Dimensions:
-    1. innovation: Technical novelty, R&D complexity, and disruptiveness.
-    2. market: TAM/SAM/SOM potential and industry tailwinds.
-    3. team: Engineering pedigree, technical credibility, and execution track record.
-    4. moat: Defensibility (IP, data network effects, hardware complexity, etc.).
+    Evaluation Criteria (Weighted):
+    - Team DNA (40%): Extraordinary pedigree, execution signals, and AI immersion.
+    - Category Creation (30%): TAM potential, 'Why Now' timing, and industry shift.
+    - Moat (20%): Data flywheels, network effects, and defensibility.
+    - Economics (10%): LTV/CAC potential and capital efficiency.
 
-    You MUST output a JSON object with this EXACT structure:
+    You MUST output a JSON object with this structure:
     {
-        "scores": {
-            "innovation": int (1-10),
-            "market": int (1-10),
-            "team": int (1-10),
-            "moat": int (1-10)
+        "votes": {
+            "partner_1": "Yes/No",
+            "partner_2": "Yes/No",
+            "partner_3": "Yes/No"
         },
-        "risk_flags": ["Short string describing a specific risk", "..."],
-        "summary_score": float (weighted average, e.g., 7.5)
+        "scores": {
+            "team_dna": int (1-10),
+            "category": int (1-10),
+            "moat": int (1-10),
+            "economics": int (1-10)
+        },
+        "risk_flags": ["string", "string"],
+        "summary_conviction": float (1.0 - 10.0),
+        "verdict": "INVEST" or "PASS"
     }
 
-    Guidelines:
-    - Be rigorous. A score of 10 is reserved for industry-redefining technology.
-    - Identify at least 2-3 specific technical or market risk flags.
-    - The summary_score should reflect your overall conviction in the investment.
+    Note: A 'Yes' vote requires a conviction that this could be a $1B+ company.
+    If the founders have pedigree from top unicorns (e.g. Canva, Airwallex), weigh the team score higher.
     """
 
-    human_prompt = f"Please evaluate this Technical Investment Memo for {state.get('name')}:\n\n{report}"
+    human_prompt = f"Please evaluate this IC Briefing Note and cast your votes:\n\n{report}"
 
     try:
-        # Call LLM to get JSON output
         response = llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=human_prompt)
         ])
         
-        # Parse JSON string into Python dictionary
         result = json.loads(response.content)
         
-        print(f"--- [Scorer Agent] Scoring Complete. Final Score: {result.get('summary_score')} ---")
+        # Format the summary for the database
+        total_yes = list(result['votes'].values()).count("Yes")
+        vote_summary = f"Result: {result['verdict']} ({total_yes}/3 Yes Votes)"
         
-        # Update the state with scores and risk flags
+        print(f"--- [Scorer Agent] Vote Result: {vote_summary} ---")
+        
         return {
             "scores": result.get("scores"),
             "risk_flags": result.get("risk_flags"),
-            "final_score": result.get("summary_score"),
+            "final_score": result.get("summary_conviction"),
+            "vote_summary": vote_summary,
             "analysis_complete": True
         }
     except Exception as e:
-        print(f"Error in Scorer Agent: {e}")
+        print(f"Scorer Agent Error: {e}")
         return {
-            "scores": {"innovation": 0, "market": 0, "team": 0, "moat": 0},
-            "risk_flags": [f"Evaluation Error: {str(e)}"],
+            "scores": {"team_dna": 0, "category": 0, "moat": 0, "economics": 0},
+            "risk_flags": [f"Scoring System Error: {str(e)}"],
             "final_score": 0.0,
+            "vote_summary": "Error",
             "analysis_complete": False
         }
