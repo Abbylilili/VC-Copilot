@@ -9,9 +9,11 @@ class AgentState(TypedDict):
     name: str
     website: str
     industry: str
+    location: str # New field for country/region
     
     # --- Research & Evidence (Researcher Agent) ---
-    raw_research_data: List[str] 
+    # Each item: {"url": "https://...", "content": "Markdown text..."}
+    raw_research_data: List[Dict[str, Any]] 
     
     # --- Human Refinement (Manual Input) ---
     human_notes: str 

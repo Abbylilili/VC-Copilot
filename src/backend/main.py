@@ -39,6 +39,8 @@ class AnalysisRequest(BaseModel):
     name: str
     website: str = ""
     industry: str = ""
+    location: str = "" # New: location/country
+    human_notes: str = ""
 
 class RefinementRequest(BaseModel):
     report_id: str
@@ -55,20 +57,19 @@ async def analyze_startup(request: AnalysisRequest):
     """
     Initial Generation: Researcher -> Analyst -> Scorer.
     """
-    print(f"\n🚀 [API] Initial Analysis Request: {request.name}")
+    print(f"\n🚀 [API] Initial Analysis Request: {request.name} ({request.location})")
     
     initial_state = {
         "name": request.name,
         "website": request.website,
         "industry": request.industry,
+        "location": request.location,
         "raw_research_data": [],
-        "human_notes": "", # Empty for initial run
+        "human_notes": request.human_notes,
         "debate_transcript": [],
         "report_content": "",
         "scores": {},
         "risk_flags": [],
-        "final_score": 0.0,
-        "vote_summary": "",
         "analysis_complete": False
     }
 
@@ -77,18 +78,24 @@ async def analyze_startup(request: AnalysisRequest):
         
         # 1. Save to 'companies'
         startup_res = supabase.table("companies").insert({
-            "name": request.name, "website": request.website, "industry": request.industry
+            "name": request.name, 
+            "website": request.website, 
+            "industry": request.industry,
+            "description": request.location # Temporary: storing location in description
         }).execute()
-        startup_id = startup_res.data[0]["id"]
+        
+        if not startup_res.data:
+            raise Exception("Failed to insert company into Supabase")
+            
+        company_id = startup_res.data[0]["id"]
 
         # 2. Save to 'analysis_reports'
         report_data = {
-            "startup_id": startup_id,
-            "research_context": "\n\n---\n\n".join(final_output.get("raw_research_data", [])),
+            "company_id": company_id,
+            "research_context": json.dumps(final_output.get("raw_research_data", [])),
             "report_content": final_output.get("report_content"),
             "scores": final_output.get("scores"),
-            "risk_flags": final_output.get("risk_flags"),
-            "final_score": final_output.get("final_score")
+            "risk_flags": final_output.get("risk_flags")
         }
         res = supabase.table("analysis_reports").insert(report_data).execute()
         
@@ -101,45 +108,47 @@ async def analyze_startup(request: AnalysisRequest):
 async def refine_analysis(request: RefinementRequest):
     """
     Human-in-the-loop Refinement: Debate -> Analyst -> Scorer.
-    Loads previous research context and integrates new human notes.
     """
     print(f"\n💡 [API] Refinement Request for Report ID: {request.report_id}")
 
     try:
-        # A. Fetch previous report data to maintain context
-        # We need the company info and the raw research data we found earlier
+        # A. Fetch previous report data
         report_res = supabase.table("analysis_reports").select("*, companies(*)").eq("id", request.report_id).single().execute()
         prev_report = report_res.data
         if not prev_report:
             raise HTTPException(status_code=404, detail="Report not found")
 
-        # B. Prepare state for the Refinement Flow
-        # We populate raw_research_data from the DB so the Debate node can see it
+        # B. Parse research data
+        raw_data = []
+        try:
+            raw_data = json.loads(prev_report["research_context"])
+        except:
+            raw_data = [{"url": "Legacy Data", "content": prev_report["research_context"]}]
+
+        # C. Prepare state
         initial_state = {
             "name": prev_report["companies"]["name"],
             "website": prev_report["companies"]["website"],
             "industry": prev_report["companies"]["industry"],
-            "raw_research_data": prev_report["research_context"].split("\n\n---\n\n"),
-            "human_notes": request.human_notes, # The magic ingredient
+            "location": prev_report["companies"].get("description", ""), # Load location from description
+            "raw_research_data": raw_data,
+            "human_notes": request.human_notes,
             "debate_transcript": [],
             "report_content": "",
             "scores": {},
             "risk_flags": [],
-            "final_score": 0.0,
-            "vote_summary": "",
             "analysis_complete": False
         }
 
-        # C. Run Graph (It will automatically route to 'debate' node because human_notes exists)
+        # D. Run Graph
         final_output = investment_copilot_graph.invoke(initial_state)
 
-        # D. Update the existing report in Supabase
+        # E. Update report
         update_data = {
             "report_content": final_output.get("report_content"),
             "scores": final_output.get("scores"),
             "risk_flags": final_output.get("risk_flags"),
-            "final_score": final_output.get("final_score"),
-            "human_notes": request.human_notes # Save the notes for posterity
+            "human_notes": request.human_notes
         }
         supabase.table("analysis_reports").update(update_data).eq("id", request.report_id).execute()
 

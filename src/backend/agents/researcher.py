@@ -1,85 +1,100 @@
 import os
 import requests
-from typing import List
-from firecrawl import Firecrawl
+from typing import List, Dict, Any
+from firecrawl import Firecrawl 
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 from .state import AgentState
-from urllib.parse import urlparse
+
+# 使用一个极低温度的 LLM 专门负责“内容分拣”
+filter_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 def researcher_node(state: AgentState):
     """
-    Researcher Node: Hunt for 'Hard Signals' (Pricing, Competitors, Pedigree).
-    Explicitly looks for evidence outside of the official website.
+    调研节点：引入 location (国家/地区) 过滤，进一步消除重名干扰。
     """
-    api_key = os.getenv("FIRECRAWL_API_KEY")
-    if not api_key:
-        raise ValueError("FIRECRAWL_API_KEY is missing.")
+    firecrawl_key = os.getenv("FIRECRAWL_API_KEY")
+    serper_key = os.getenv("SERPER_API_KEY")
     
-    app = Firecrawl(api_key=api_key)
     company_name = state.get('name')
-    company_url = state.get('website')
-    industry = state.get('industry')
+    website = state.get('website', '')
+    location = state.get('location', '')
     
-    print(f"\n--- [Researcher Agent] Hunting for Hard Signals: {company_name} ---")
+    if not firecrawl_key or not serper_key:
+        print("❌ CRITICAL ERROR: API Keys missing.")
+        return {"raw_research_data": []}
     
-    all_markdown = []
-    processed_urls = set()
-
-    # 1. THE FOUNDATION: Get the official vision
-    if company_url:
-        try:
-            print(f"🎯 Step 1: Mapping the official claim - {company_url}")
-            res = app.scrape(company_url, formats=['markdown'])
-            content = getattr(res, 'markdown', None) or (res.get('markdown') if isinstance(res, dict) else None)
-            if content:
-                all_markdown.append(f"OFFICIAL WEBSITE CONTENT:\n\n{content}")
-                processed_urls.add(company_url)
-        except Exception as e:
-            print(f"⚠️ Step 1: Failed to scrape official site: {e}")
-
-    # 2. THE MULTI-TRACK HUNT: Diverse queries to bypass the parrot effect
-    domain = urlparse(company_url).netloc if company_url else ""
+    try:
+        app = Firecrawl(api_key=firecrawl_key)
+    except Exception as e:
+        print(f"❌ Firecrawl 初始化失败: {e}")
+        return {"raw_research_data": []}
     
-    queries = [
-        # Track A: Team Pedigree (Looking for DNA)
-        f'"{company_name}" founders career team pedigree ex-Canva ex-Airwallex ex-Atlassian',
-        # Track B: Market Evidence & Pricing (The 'Hard' Business)
-        f'"{company_name}" pricing model customer reviews business model',
-        # Track C: Critical Outside-in (The Reality Check)
-        f'"{company_name}" competitors vs analysis risks challenges -site:{domain}'
-    ]
-
-    print(f"🧠 Step 2: Sourcing Hard Signals (DNA, Business Model, Competitor Analysis)...")
-
+    print(f"\n--- [Researcher Agent] 开始调研: {company_name} (地区: {location}) ---")
+    
+    # 1. 搜索词构建：加入国家/地区关键词
+    # 示例: "Stripe" startup tech funding Israel
+    search_query = f'"{company_name}" startup OR tech'
+    if location:
+        search_query += f' "{location}"'
+    if website:
+        search_query = f"{search_query} OR site:{website}"
+        
     serper_url = "https://google.serper.dev/search"
-    headers = {'X-API-KEY': os.getenv("SERPER_API_KEY"), 'Content-Type': 'application/json'}
+    headers = {'X-API-KEY': serper_key, 'Content-Type': 'application/json'}
+    payload = {"q": search_query, "num": 6}
     
-    search_urls = []
-    for q in queries:
-        try:
-            payload = {"q": q, "num": 5}
-            response = requests.post(serper_url, headers=headers, json=payload)
-            results = response.json().get('organic', [])
-            search_urls.extend([item['link'] for item in results if item['link'] not in processed_urls])
-        except Exception as e:
-            print(f"Search failed for {q}: {e}")
+    urls = []
+    try:
+        response = requests.post(serper_url, headers=headers, json=payload)
+        search_results = response.json()
+        urls = [item['link'] for item in search_results.get('organic', [])]
+        print(f"✅ 找到 {len(urls)} 个候选链接")
+    except Exception as e:
+        print(f"❌ Serper 失败: {e}")
 
-    # 3. Deep Scrape signal-heavy pages
-    blacklist = ["linkedin.com", "twitter.com", "x.com", "facebook.com"]
-    
-    for url in list(dict.fromkeys(search_urls))[:6]:
-        if any(b in url for b in blacklist): continue
+    # 2. 抓取与语义过滤
+    all_valid_data = []
+    for url in urls[:5]:
+        if any(domain in url for domain in ["linkedin.com/in", "twitter.com", "facebook.com"]):
+            continue
+            
         try:
-            print(f"Scraping signal-heavy source: {url}")
-            res = app.scrape(url, formats=['markdown'])
-            content = getattr(res, 'markdown', None) or (res.get('markdown') if isinstance(res, dict) else None)
-            if content:
-                print(f"✅ Captured Hard Signal ({len(content)} chars)")
-                all_markdown.append(f"SIGNAL SOURCE ({url}):\n\n{content}")
-        except Exception as e:
-            print(f"❌ Scraping failed {url}: {e}")
+            print(f"🔍 正在抓取并核对: {url}")
+            scrape_result = app.scrape(url, formats=['markdown'])
+            
+            if scrape_result:
+                markdown_content = getattr(scrape_result, 'markdown', None) or scrape_result.get('markdown')
+                
+                if markdown_content and len(markdown_content) > 200:
+                    # --- 增强版 LLM 语义核对 (包含地理位置信息) ---
+                    verification_prompt = f"""
+                    You are a data validation assistant for a VC firm. 
+                    Target Startup: "{company_name}"
+                    Expected Location: "{location}"
+                    Target Website: "{website}"
 
-    print(f"--- [Researcher Agent] Hunt complete. Collected {len(all_markdown)} diverse signal segments ---")
-    
-    return {
-        "raw_research_data": all_markdown
-    }
+                    Task: Is this text about the startup "{company_name}" based in "{location}"? 
+                    If the location matches or is plausible for this company, answer YES.
+                    If the text is about a different company with the same name in a different country, answer NO.
+                    
+                    Text snippet:
+                    {markdown_content[:2000]}
+
+                    Answer ONLY "YES" or "NO".
+                    """
+                    
+                    try:
+                        res = filter_llm.invoke([SystemMessage(content=verification_prompt)]).content.strip().upper()
+                        if "YES" in res:
+                            print(f"✅ 验证通过 (地区匹配): {url}")
+                            all_valid_data.append({"url": url, "content": markdown_content})
+                        else:
+                            print(f"⚠️ 验证失败 (可能为异地重名): {url}")
+                    except:
+                        if company_name.lower() in markdown_content.lower():
+                            all_valid_data.append({"url": url, "content": markdown_content})
+        except Exception as e:
+            print(f"❌ 爬取 {url} 失败: {e}")
+
+    return {"raw_research_data": all_valid_data}
