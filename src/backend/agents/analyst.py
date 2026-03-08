@@ -6,56 +6,71 @@ from .state import AgentState
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.1)
 
 def analyst_node(state: AgentState):
-
-    name = state.get('name', '该初创公司')
-    print(f"\n--- [Analyst Agent] 正在为 {name} 生成深度报告 ---")
+    name = state.get('name', 'Startup')
+    print(f"\n--- [Analyst Agent] Synthesizing Intelligence for: {name} ---")
     
-    # 1. 整理带链接的原始资料
+    # 1. Gather all inputs
     research_items = state.get('raw_research_data', [])
+    human_notes = state.get('human_notes', "")
+    debate_transcript = state.get('debate_transcript', [])
     
-    formatted_context = ""
+    # 2. Determine if this is an INITIAL report or a REFINED report
+    is_refined = len(debate_transcript) > 0 or len(human_notes) > 0
+    
+    # 3. Format context
+    formatted_context = f"### STARTUP: {name} (Location: {state.get('location')})\n"
+    
+    if human_notes:
+        formatted_context += f"\n### CRITICAL EXPERT NOTES (Added by User):\n{human_notes}\n"
+    
+    if debate_transcript:
+        formatted_context += f"\n### INTERNAL COMMITTEE BRAINSTORMING TRANSCRIPT:\n" + "\n".join(debate_transcript) + "\n"
+    
     sources_summary = []
-    
-    for item in research_items:
-        url = item.get('url', 'Unknown Source')
-        content = item.get('content', '')
-        if len(content) > 50:
-            formatted_context += f"\n\n--- SOURCE: {url} ---\n\n{content}"
+    if research_items:
+        formatted_context += "\n### WEB RESEARCH DATA:\n"
+        for item in research_items:
+            url = item.get('url', 'Unknown')
+            content = item.get('content', '')
+            formatted_context += f"- SOURCE [{url}]: {content[:2000]}\n"
             sources_summary.append(url)
     
-    print(f"DEBUG: [Analyst Agent] 使用了来自 {len(sources_summary)} 个信源的数据进行分析")
-
-    if not formatted_context or len(formatted_context) < 100:
-        print(f"⚠️ 警告: [Analyst Agent] 调研资料太少，无法生成深度报告。")
-        return {"report_content": "Failed: Insufficient research data to generate a technical memo."}
-
-    # 2. Professional Deep Tech VC Analyst Prompt (With Citations)
+    # 4. Dynamic Prompt based on stage
+    debate_instruction = ""
+    if is_refined:
+        debate_instruction = """
+        ## 5. Synthesis of Expert/Internal Debate
+        Summarize the key points of disagreement and the final consensus reached during the internal brainstorming session. 
+        How did the new expert notes change our initial hypothesis?
+        """
+    
     system_prompt = f"""
-    You are a skeptical Senior Technical Partner at a top-tier Venture Capital firm.
-    Your PRIMARY job is to conduct a rigorous technical due diligence report for: **{name}**.
+    You are a skeptical Senior Technical Partner. Generate a high-fidelity Technical Investment Memo for: {name}.
 
-    Guidelines:
-    - **Cite Sources**: When mentioning specific technical claims or metrics, try to reference the source URL provided in the context.
-    - **No Hallucinations**: If data is missing for a section, write "DATA UNAVAILABLE".
-    - **Structure**: Follow the Professional Markdown format (Innovation, Moat, Market, Team, Roadmap, Risks, Verdict).
+    REPORT STRUCTURE:
+    # Technical Investment Memo: {name}
+    ## 1. Core Innovation & Hypothesis
+    ## 2. Competitive Landscape
+    ## 3. Technical Feasibility & Moat
+    ## 4. Key Risks (Technical & Execution)
+    {debate_instruction}
+
+    STRICT RULE:
+    - If no internal debate is provided in the context, DO NOT include Section 5 and DO NOT invent any "internal discussions".
+    - Focus strictly on the Web Research Data for the initial memo.
     """
     
-    human_prompt = f"Here is the raw research data and source URLs for {name}:\n\n{formatted_context}"
-    
     try:
-        response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=human_prompt)
-        ])
+        response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=formatted_context)])
         
-        # 在报告末尾自动附上引用列表
-        sources_list = "\n\n## Data Sources & Evidence\n" + "\n".join([f"- {url}" for url in sources_summary])
-        final_report = response.content + sources_list
-        
-        print(f"✅ [Analyst Agent] 报告生成完毕 (长度: {len(final_report)} 字符) ---")
-        return {
-            "report_content": final_report
-        }
+        # Append Citations
+        citation_footer = "\n\n## Data Sources & Evidence\n"
+        if sources_summary:
+            citation_footer += "\n".join([f"- {url}" for url in sources_summary])
+        if human_notes:
+            citation_footer += "\n- [INTERNAL] Proprietary Expert Insights"
+            
+        return {"report_content": response.content + citation_footer}
     except Exception as e:
-        print(f"❌ Analyst Agent 运行出错: {e}")
-        return {"report_content": f"Failed: Error during report generation: {e}"}
+        print(f"❌ Analyst Error: {e}")
+        return {"report_content": f"Failed to generate report: {e}"}
