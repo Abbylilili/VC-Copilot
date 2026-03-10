@@ -12,6 +12,7 @@ import {
   CheckCircle2, Loader2, Briefcase, Sparkles, RefreshCcw 
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 
 export default function InvestmentDashboard() {
   const [loading, setLoading] = useState(false)
@@ -157,7 +158,7 @@ export default function InvestmentDashboard() {
                 <div className="grid grid-cols-4 gap-4 mb-12 shrink-0">
                   {Object.entries(report.scores).map(([k,v]) => (<div key={k} className="bg-slate-50 p-4 rounded-2xl border flex flex-col items-center shadow-sm"><span className="text-[9px] font-bold text-slate-400 uppercase mb-1">{k}</span><span className="text-2xl font-black">{v as number}</span></div>))}
                 </div>
-                <article className="prose prose-slate max-w-none prose-p:text-slate-600 prose-p:leading-relaxed prose-headings:font-black prose-headings:tracking-tighter"><ReactMarkdown>{report.report_content || report.report}</ReactMarkdown></article>
+                <article className="prose prose-slate max-w-none prose-p:text-slate-600 prose-p:leading-relaxed prose-headings:font-black prose-headings:tracking-tighter"><ReactMarkdown remarkPlugins={[remarkGfm]}>{report.report_content || report.report}</ReactMarkdown></article>
                 {report.risk_flags && <div className="mt-16 bg-rose-50/30 p-8 rounded-3xl border border-rose-100/50 shadow-sm"><h3 className="font-bold text-rose-900 text-xs uppercase tracking-widest mb-6 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Risk Assessment</h3><ul className="space-y-3">{report.risk_flags.map((f: string, i: number) => <li key={i} className="text-sm text-rose-800/80 font-medium flex gap-3"><span className="text-rose-200 font-black">0{i+1}</span> {f}</li>)}</ul></div>}
               </div>
             )}

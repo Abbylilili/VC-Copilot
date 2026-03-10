@@ -97,7 +97,32 @@ def researcher_node(state: AgentState):
                                 break # 搜到一个人就跳过
             except: pass
 
-    # --- PART 3: Crunchbase & News ---
+    # --- PART 3: Competitor & Market Positioning ---
+    if serper_key:
+        print(f"🕵️ Searching for direct competitors of {name}...")
+        comp_queries = [
+            f'"{name}" direct competitors startups',
+            f'"{name}" vs * alternatives',
+            f'top 5 competitors for {name} startup'
+        ]
+        
+        comp_insights = "### COMPETITIVE INTELLIGENCE:\n"
+        for q in comp_queries:
+            try:
+                res = requests.post("https://google.serper.dev/search", 
+                                 headers={'X-API-KEY': serper_key}, 
+                                 json={"q": q, "num": 4}).json()
+                for item in res.get('organic', []):
+                    snippet = item.get('snippet', '')
+                    title = item.get('title', '')
+                    link = item.get('link', '')
+                    comp_insights += f"- **{title}** ({link}): {snippet}\n"
+            except: pass
+        
+        if len(comp_insights) > 50:
+            all_valid_data.append({"url": "Search-Engine-Consolidated", "content": comp_insights})
+
+    # --- PART 4: Crunchbase & News ---
     if serper_key:
         try:
             res = requests.post("https://google.serper.dev/search", headers={'X-API-KEY': serper_key}, json={"q": f'site:crunchbase.com "{name}" funding', "num": 1}).json()

@@ -14,10 +14,11 @@ def analyst_node(state: AgentState):
     human_notes = state.get('human_notes', "")
     debate_transcript = state.get('debate_transcript', [])
     
-    # 2. Categorize Data (Market vs Founders vs Crunchbase)
+    # 2. Categorize Data (Market vs Founders vs Crunchbase vs Competitors)
     market_data = []
     founder_data = []
     crunchbase_data = []
+    competitor_data = []
     sources_summary = []
     
     for item in research_items:
@@ -29,12 +30,15 @@ def analyst_node(state: AgentState):
             founder_data.append(f"SOURCE [{url}]:\n{content}")
         elif "### CRUNCHBASE DATA" in content:
             crunchbase_data.append(f"SOURCE [{url}]:\n{content}")
+        elif "### COMPETITIVE INTELLIGENCE" in content:
+            competitor_data.append(f"SOURCE [{url}]:\n{content}")
         else:
             market_data.append(f"SOURCE [{url}]:\n{content[:2000]}")
     
     web_research_data_str = "\n".join(market_data) if market_data else "No specific market data found."
     founder_data_str = "\n".join(founder_data) if founder_data else "No specific founder/team DNA found."
     cb_data_str = "\n".join(crunchbase_data) if crunchbase_data else "No Crunchbase record found for this entity."
+    comp_data_str = "\n".join(competitor_data) if competitor_data else "No explicit competitive intel found."
     
     # 3. Determine if this is an INITIAL report or a REFINED report
     is_refined = len(debate_transcript) > 0 or len(human_notes) > 0
@@ -70,13 +74,16 @@ def analyst_node(state: AgentState):
     ---
 
     ## DATA SOURCES (Prioritize in this order):
-    ### 1️⃣ CRUNCHBASE & FUNDING DATA (Highest Trust)
+    ### 1️⃣ COMPETITIVE & PEER INTELLIGENCE
+    {comp_data_str}
+
+    ### 2️⃣ CRUNCHBASE & FUNDING DATA (Highest Trust)
     {cb_data_str}
 
-    ### 2️⃣ FOUNDER & TEAM DNA (Critical for Early Stage)
+    ### 3️⃣ FOUNDER & TEAM DNA (Critical for Early Stage)
     {founder_data_str}
 
-    ### 3️⃣ NEWS, PRODUCT & MARKET INTELLIGENCE
+    ### 4️⃣ NEWS, PRODUCT & MARKET INTELLIGENCE
     {web_research_data_str}
 
     **DATA QUALITY PROTOCOL:**
@@ -163,27 +170,39 @@ def analyst_node(state: AgentState):
     ---
 
     ## 5. Competitive Landscape & Differentiation
-    **Direct Competitors:** [Name 3-5 specific companies, not generic categories]
+    **CRITICAL: IDENTIFY DIRECT PEER COMPETITORS.**
 
-    **Positioning Map:**
-    | Competitor | Strength | Weakness | How {name} Differs |
-    | :--- | :--- | :--- | :--- |
-    | Example Co | Feature X | Slow GTM | {name}'s approach |
+    **Direct Competitors:** [List 3-5 specific peer companies or startups]
+    
+    ⚠️ **STRICT FILTER:** 
+    - DO NOT list generic infrastructure providers (e.g., AWS, Azure, Google Cloud, IBM) unless the startup is literally building a cloud infrastructure platform. 
+    - Focus on other startups, direct product-level rivals, or specific business units of large firms that compete directly with {name}.
+
+    **Positioning Map (MANDATORY TABLE):**
+    *Instructions: You MUST generate a row for EVERY competitor listed above. 
+    Row count MUST equal competitor count. Do not truncate. Do not skip any row.*
+
+    | Competitor | Core Strength | Key Weakness | Why {name} Wins / Differentiation |
+    |------------|---------------|--------------|-----------------------------------|
+    | [Competitor A] | [e.g., Early mover, brand] | [e.g., Legacy tech, high price] | [e.g., 10x faster inference] |
+    | [Competitor B] | [e.g., Large distribution] | [e.g., Product complexity] | [e.g., Native workflow integration] |
+
+    *The rows above are EXAMPLES ONLY. Replace with actual competitor data.*
 
     **Market Whitespace Assessment:**
-    - Crowded space or genuine innovation?
-    - What makes this defensible against incumbents?
+    - Is this a crowded "Red Ocean" or a genuine "Blue Ocean" innovation?
+    - What is the "unfair advantage" that makes this defensible against both incumbents and new entrants?
 
     ---
 
     ## 6. Defensibility & Moat Analysis (20% Weight)
     **Moat Type Identified:**
-    - [ ] **Network Effects** (value increases with users, e.g., marketplace)
-    - [ ] **Data Moat** (proprietary dataset + ML flywheel)
-    - [ ] **Switching Costs** (embedded in workflow, painful to replace)
-    - [ ] **Regulatory/IP Moat** (patents, licenses, compliance barriers)
-    - [ ] **Brand** (premium positioning, cult following)
-    - [ ] ⚠️ **No Clear Moat** (commoditized, replicable)
+    - [1] **Network Effects** (value increases with users, e.g., marketplace)
+    - [2] **Data Moat** (proprietary dataset + ML flywheel)
+    - [3] **Switching Costs** (embedded in workflow, painful to replace)
+    - [4] **Regulatory/IP Moat** (patents, licenses, compliance barriers)
+    - [5] **Brand** (premium positioning, cult following)
+    - [6] ⚠️ **No Clear Moat** (commoditized, replicable)
 
     **Moat Strength:** [🟢 STRONG / 🟡 DEVELOPING / 🔴 WEAK]
 
@@ -217,10 +236,10 @@ def analyst_node(state: AgentState):
     - Bull Case: [$XXB outcome if category creation succeeds]
 
     **Next Steps:**
-    - [ ] Reference calls with former colleagues
-    - [ ] Customer interviews (if applicable)
-    - [ ] Financial model review
-    - [ ] Term sheet negotiation
+    - [1] Reference calls with former colleagues
+    - [2] Customer interviews (if applicable)
+    - [3] Financial model review
+    - [4] Term sheet negotiation
 
     {debate_instruction}
 
@@ -236,23 +255,24 @@ def analyst_node(state: AgentState):
 
     **CRITICAL TABLE FORMATTING (MUST FOLLOW EXACTLY):**
 
-    ⚠️ TABLES MUST BE FORMATTED LIKE THIS EXAMPLE (EACH ROW ON A NEW LINE):
+    ⚠️ EVERY TABLE ROW MUST BE ON ITS OWN SEPARATE LINE. NO EXCEPTIONS.
 
-    | Column 1 | Column 2 | Column 3 |
-    | :--- | :---: | :--- |
-    | Row 1 Data | Value A | Description here |
-    | Row 2 Data | Value B | Description here |
-    | Row 3 Data | Value C | Description here |
+    CORRECT EXAMPLE:
+    | Competitor | Core Strength | Key Weakness | Why We Win |
+    | :--- | :--- | :--- | :--- |
+    | Company A | Strong brand | High cost | We are cheaper |
+    | Company B | Large network | Slow innovation | We move faster |
+    | Company C | Enterprise focus | Poor UX | We have better UX |
 
-    ❌ NEVER DO THIS (rows on same line):
-    | Column 1 | Column 2 | | Row 1 | Value | | Row 2 | Value |
+    ❌ NEVER concatenate rows like this:
+    | Company A | Strong brand | High cost | We are cheaper | | Company B | Large network | Slow innovation | We move faster |
 
-    ✅ CORRECT FORMAT RULES:
-    1. Header row on its own line
-    2. Separator row (| :--- |) on its own line
-    3. EACH data row on its own separate line
-    4. Empty line before and after the entire table
-    5. Use literal newline character (\n) between rows
+    ✅ RULES:
+    1. One row per line, always
+    2. Header row on its own line
+    3. Separator line (| :--- |) on its own line
+    4. Each data row on its own line with a real newline after it
+    5. Empty line before and after the entire table
 
     **CHECKBOX FORMATTING:**
     - Use `- [ ]` for unchecked (note the dash and space)
@@ -269,55 +289,32 @@ def analyst_node(state: AgentState):
 
         def fix_markdown_tables(text):
             """
-            Fix malformed markdown tables where rows might be on the same line.
-            Strategy: Find table blocks and ensure each row is on its own line.
+            Fix malformed markdown tables where multiple rows are concatenated on one line.
+            Splits lines like: | A | B | | C | D | into separate rows.
             """
             lines = text.split('\n')
             fixed_lines = []
-            in_table = False
 
-            for i, line in enumerate(lines):
+            for line in lines:
                 stripped = line.strip()
-
-                # Detect table start (line with multiple pipes)
-                if stripped.count('|') >= 2:
-                    in_table = True
-
-                    # Check if multiple rows are concatenated (heuristic: too many pipes)
-                    # A normal table row has N pipes for N-1 columns
-                    # If we see pattern like "| A | B | | C | D |", that's 2 rows concatenated
-
-                    # Simple fix: If line has "| |" pattern repeated suspiciously, try to split
-                    # Pattern: | content | | content | (double pipe suggests row boundary)
-                    if '| |' in line:
-                        # Split by double-pipe-space pattern
-                        segments = re.split(r'\|\s+\|(?=\s*[^:\s-])', line)
-                        for seg in segments:
-                            if seg.strip():
-                                # Ensure it starts and ends with |
-                                if not seg.strip().startswith('|'):
-                                    seg = '| ' + seg.strip()
-                                if not seg.strip().endswith('|'):
-                                    seg = seg.strip() + ' |'
-                                fixed_lines.append(seg)
-                    else:
-                        fixed_lines.append(line)
-
-                    # Check if next line is not a table row (table ended)
-                    if i + 1 < len(lines) and lines[i + 1].strip().count('|') < 2:
-                        in_table = False
-                else:
-                    in_table = False
-                    fixed_lines.append(line)
+                # Only process lines that look like table rows
+                if stripped.startswith('|') and stripped.endswith('|') and stripped.count('|') >= 4:
+                    # Detect concatenated rows: pattern "| ... | | ..." (pipe-space-pipe not in separator)
+                    is_separator = re.match(r'^\|[\s|:\-]+\|$', stripped)
+                    if not is_separator:
+                        # Split on "| |" boundary (end of one row + start of next)
+                        parts = re.split(r'\|\s*\n?\s*\|(?!\s*[-:])', stripped)
+                        if len(parts) > 1:
+                            for part in parts:
+                                part = part.strip().strip('|').strip()
+                                if part:
+                                    fixed_lines.append('| ' + ' | '.join(c.strip() for c in part.split('|')) + ' |')
+                            continue
+                fixed_lines.append(line)
 
             result = '\n'.join(fixed_lines)
-
-            # Ensure separator rows have proper spacing
-            result = re.sub(r'(\|[\s:]+\-+[\s:]+\|.*)', r'\n\1\n', result)
-
             # Clean up excessive newlines
             result = re.sub(r'\n{4,}', '\n\n', result)
-
             return result
 
         content = fix_markdown_tables(content)

@@ -127,3 +127,23 @@
     @apply font-sans;
   }
 }
+
+/* Markdown table styles */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+.prose table th,
+.prose table td {
+  border: 1px solid #e2e8f0;
+  padding: 8px 12px;
+  text-align: left;
+}
+.prose table th {
+  background-color: #f8fafc;
+  font-weight: 600;
+}
+.prose table tr:nth-child(even) {
+  background-color: #f8fafc;
+}
