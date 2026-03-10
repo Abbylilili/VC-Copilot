@@ -4,6 +4,7 @@ from .researcher import researcher_node
 from .analyst import analyst_node
 from .scorer import scorer_node
 from .debate import debate_node
+from .document_generator import document_generator_node
 
 def route_start(state: AgentState):
     """
@@ -20,8 +21,8 @@ def route_start(state: AgentState):
 def create_agent_graph():
     """
     Creates the Investment Copilot workflow with Human-in-the-Loop capabilities.
-    Flow 1 (Initial): Start -> Researcher -> Analyst -> Scorer -> END
-    Flow 2 (Refine):  Start -> Debate -> Analyst -> Scorer -> END
+    Flow 1 (Initial): Start -> Researcher -> Analyst -> Scorer -> DocumentGenerator -> END
+    Flow 2 (Refine):  Start -> Debate -> Analyst -> Scorer -> DocumentGenerator -> END
     """
     
     # 1. Initialize StateGraph
@@ -32,6 +33,7 @@ def create_agent_graph():
     workflow.add_node("debate", debate_node)
     workflow.add_node("analyst", analyst_node)
     workflow.add_node("scorer", scorer_node)
+    workflow.add_node("document_generator", document_generator_node)
 
     # 3. Set Conditional Entry Point
     # This allows us to use the same graph for both first-time generation and refinement.
@@ -53,8 +55,11 @@ def create_agent_graph():
     # Analysis always leads to scoring
     workflow.add_edge("analyst", "scorer")
     
-    # Scoring ends the process
-    workflow.add_edge("scorer", END)
+    # Scoring leads to document generation
+    workflow.add_edge("scorer", "document_generator")
+    
+    # Document generation ends the process
+    workflow.add_edge("document_generator", END)
 
     # 5. Compile
     app = workflow.compile()

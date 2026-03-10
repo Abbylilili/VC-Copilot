@@ -8,4 +8,5 @@ firecrawl-py
 python-dotenv
 supabase
 pydantic
-requests             # Serper 通常直接用 requests 调用 API
+requests             # Serper 通常直接用 requests 调用 APItavily-python
+exa-py

@@ -128,22 +128,39 @@
   }
 }
 
+/* Markdown styles */
+.prose h1 {
+  @apply text-3xl font-black tracking-tight text-slate-900 mt-10 mb-6 pb-2 border-b-2 border-slate-900;
+}
+.prose h2 {
+  @apply text-xl font-bold tracking-tight text-slate-800 mt-8 mb-4;
+}
+.prose h3 {
+  @apply text-lg font-bold text-slate-700 mt-6 mb-2;
+}
+
 /* Markdown table styles */
 .prose table {
   width: 100%;
   border-collapse: collapse;
-  margin: 1rem 0;
+  margin: 1.5rem 0;
+  @apply text-sm shadow-sm rounded-lg overflow-hidden border-hidden;
 }
-.prose table th,
-.prose table td {
-  border: 1px solid #e2e8f0;
-  padding: 8px 12px;
-  text-align: left;
+.prose table thead {
+  @apply bg-slate-900 text-white;
 }
 .prose table th {
-  background-color: #f8fafc;
-  font-weight: 600;
+  @apply font-bold px-4 py-3 text-left border-none;
+}
+.prose table td {
+  @apply px-4 py-3 border-b border-slate-100;
+}
+.prose table tr:last-child td {
+  @apply border-none;
 }
 .prose table tr:nth-child(even) {
-  background-color: #f8fafc;
+  @apply bg-slate-50/50;
+}
+.prose hr {
+  @apply my-12 border-slate-100;
 }

@@ -5,131 +5,125 @@ import re
 from typing import List, Dict, Any
 from firecrawl import Firecrawl 
 from .state import AgentState
+from tavily import TavilyClient
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 
 def researcher_node(state: AgentState):
     """
-    深度调研节点：
-    1. 抓取官网（首页 + Leadership）。
-    2. 从官网内容中【精准识别】核心创始人姓名。
-    3. 针对性搜索 Paul Sainsbury 和 Andrew Trahair 的 LinkedIn。
+    终极调研节点：
+    1. 域名硬锁定 + LLM 筛选创始人。
+    2. 接入 Tavily (竞争对手/融资)。
+    3. 接入 NewsAPI (新闻舆情)。
+    4. 接入 Exa (市场规模)。
+    5. 严格对齐 Analyst 的标签。
     """
     firecrawl_key = os.getenv("FIRECRAWL_API_KEY")
     serper_key = os.getenv("SERPER_API_KEY")
     pdl_key = os.getenv("PDL_API_KEY")
+    tavily_key = os.getenv("TAVILY_API_KEY")
+    exa_key = os.getenv("EXA_API_KEY")
+    newsapi_key = os.getenv("NEWSAPI_KEY")
     
     name = state.get('name')
     website = state.get('website', '')
+    domain = website.replace("https://", "").replace("http://", "").split('/')[0] if website else ""
     
     all_valid_data = []
     identified_founder_names = []
     
-    print(f"\n--- [Researcher Agent] Deep Researching: {name} ---")
+    print(f"\n--- [Strategic Researcher] Re-aligning Intelligence for: {name} ---")
 
-    # --- PART 1: Website Leadership Discovery ---
-    if firecrawl_key and website:
+    # --- PART 1: Founders & Leadership (Precision Extraction) ---
+    combined_text = ""
+    if firecrawl_key and domain:
         try:
             app = Firecrawl(api_key=firecrawl_key)
-            domain = website.replace("https://", "").replace("http://", "").split('/')[0]
+            map_result = app.map(domain)
+            links = map_result.get('links', []) if isinstance(map_result, dict) else map_result
+            high_value_urls = [l for l in links if any(k in l.lower() for k in ['team', 'leader', 'about', 'founder', 'management'])]
+            if not high_value_urls: high_value_urls = [website]
             
-            # 优先寻找 Leadership 页面
-            site_search_query = f'site:{domain} (leadership OR team OR "our-leadership")'
-            res = requests.post("https://google.serper.dev/search", headers={'X-API-KEY': serper_key}, json={"q": site_search_query, "num": 3}).json()
-            
-            # 如果搜到了 Leadership URL，直接抓
-            team_urls = [item.get('link') for item in res.get('organic', []) if item.get('link')]
-            # 增加兜底：如果没搜到，手动拼一个常见的路径
-            if not team_urls:
-                team_urls = [f"https://{domain}/our-leadership", f"https://{domain}/about"]
-
-            combined_text = ""
-            for t_url in team_urls[:2]:
+            for t_url in high_value_urls[:3]:
                 try:
-                    print(f"🎯 Scraping Team Page: {t_url}")
                     t_scrape = app.scrape(t_url, formats=['markdown'])
                     content = getattr(t_scrape, 'markdown', None) or t_scrape.get('markdown', "")
-                    if len(content) > 200:
-                        all_valid_data.append({"url": t_url, "content": f"### WEBSITE LEADERSHIP:\n{content}"})
-                        combined_text += "\n" + content
+                    if len(content) > 100: combined_text += f"\n{content}\n"
                 except: pass
+        except: pass
 
-            # 启发式提取：识别 Paul Sainsbury 和 Andrew Trahair
-            # 我们通过寻找 "Founder", "CEO", "Chairman" 附近的姓名
-            found_names = re.findall(r'([A-Z][a-z]+ [A-Z][a-z]+)', combined_text)
-            for fn in found_names:
-                if any(k in combined_text.lower() for k in ["founder", "ceo", "chairman"]):
-                    # 再次过滤掉一些干扰词
-                    if fn not in identified_founder_names and "Found" not in fn and "Contact" not in fn:
-                        identified_founder_names.append(fn)
-            
-            # 强制补全（基于用户提供的正确信息，确保不再找错）
-            if "Paul Sainsbury" not in identified_founder_names: identified_founder_names.append("Paul Sainsbury")
-            if "Andrew Trahair" not in identified_founder_names: identified_founder_names.append("Andrew Trahair")
-            
-            print(f"🕵️ Target Founders for LinkedIn Search: {identified_founder_names}")
-        except Exception as e:
-            print(f"⚠️ Website Discovery Error: {e}")
+    # Google Fallback for Founders
+    if serper_key:
+        q = f'who are the founders and leadership of {name} startup'
+        try:
+            res = requests.post("https://google.serper.dev/search", headers={'X-API-KEY': serper_key}, json={"q": q, "num": 5}).json()
+            combined_text += "\n" + "\n".join([item.get('snippet', '') for item in res.get('organic', [])])
+        except: pass
 
-    # --- PART 2: LinkedIn Search & PDL (实名针对性) ---
-    founder_data_found = []
-    if serper_key and identified_founder_names:
-        for fname in identified_founder_names[:2]: # 只要这两个核心
-            print(f"🔍 Searching LinkedIn for Verified Founder: {fname}")
+    # LLM Entity Resolution
+    if combined_text:
+        llm_mini = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        extraction_prompt = f"Identify core founders/CEO of {name}. Exclude external advisors or chairmen of other firms. Content: {combined_text[:8000]}. Return comma-separated names or UNKNOWN."
+        res_names = llm_mini.invoke([SystemMessage(content=extraction_prompt)]).content
+        if "UNKNOWN" not in res_names.upper():
+            identified_founder_names = [n.strip() for n in res_names.split(',') if 1 < len(n.split()) < 4]
+
+    # LinkedIn/PDL Deep Dive
+    if identified_founder_names:
+        for fname in identified_founder_names[:3]:
             q = f'"{fname}" "{name}" linkedin'
             try:
                 res = requests.post("https://google.serper.dev/search", headers={'X-API-KEY': serper_key}, json={"q": q, "num": 2}).json()
                 for item in res.get('organic', []):
                     link = item.get('link', '')
                     if "linkedin.com/in/" in link:
-                        clean_link = re.sub(r'https://[a-z]{2,3}\.linkedin\.com', 'https://www.linkedin.com', link.split('?')[0])
-                        if not clean_link.endswith('/'): clean_link += '/'
-                        
-                        # 调用 PDL 获取 Paul/Andrew 的真实简历
+                        dna_md = f"### FOUNDER DNA: {fname}\n**LinkedIn**: {link}\n**Bio**: {item.get('snippet')}\n"
                         if pdl_key:
-                            print(f"🧬 Fetching PDL for {fname}...")
-                            p_res = requests.get("https://api.peopledatalabs.com/v5/person/enrich", params={'profile': clean_link}, headers={'X-Api-Key': pdl_key})
+                            p_res = requests.get("https://api.peopledatalabs.com/v5/person/enrich", params={'profile': link}, headers={'X-Api-Key': pdl_key})
                             if p_res.status_code == 200:
                                 data = p_res.json().get('data', {})
-                                dna_md = f"### FOUNDER DNA: {data.get('full_name', fname)}\n**Source**: LinkedIn Enrichment\n\n#### 🛠 Professional Experience:\n"
                                 for ex in data.get('experience', [])[:5]:
                                     dna_md += f"- **{ex.get('title', {}).get('name')}** at **{ex.get('company', {}).get('name')}**\n"
-                                all_valid_data.append({"url": clean_link, "content": dna_md})
-                                print(f"✅ Secured DNA for: {fname}")
-                                break # 搜到一个人就跳过
+                        all_valid_data.append({"url": link, "content": dna_md})
+                        break
             except: pass
 
-    # --- PART 3: Competitor & Market Positioning ---
-    if serper_key:
-        print(f"🕵️ Searching for direct competitors of {name}...")
-        comp_queries = [
-            f'"{name}" direct competitors startups',
-            f'"{name}" vs * alternatives',
-            f'top 5 competitors for {name} startup'
-        ]
-        
-        comp_insights = "### COMPETITIVE INTELLIGENCE:\n"
-        for q in comp_queries:
-            try:
-                res = requests.post("https://google.serper.dev/search", 
-                                 headers={'X-API-KEY': serper_key}, 
-                                 json={"q": q, "num": 4}).json()
-                for item in res.get('organic', []):
-                    snippet = item.get('snippet', '')
-                    title = item.get('title', '')
-                    link = item.get('link', '')
-                    comp_insights += f"- **{title}** ({link}): {snippet}\n"
-            except: pass
-        
-        if len(comp_insights) > 50:
-            all_valid_data.append({"url": "Search-Engine-Consolidated", "content": comp_insights})
-
-    # --- PART 4: Crunchbase & News ---
-    if serper_key:
+    # --- PART 2: Competitive Intelligence (Crucial Tag Align) ---
+    if tavily_key:
+        print(f"🕵️ Searching for competitors via Tavily...")
         try:
-            res = requests.post("https://google.serper.dev/search", headers={'X-API-KEY': serper_key}, json={"q": f'site:crunchbase.com "{name}" funding', "num": 1}).json()
-            cb_url = res.get('organic', [{}])[0].get('link')
-            if cb_url:
-                c_scrape = app.scrape(cb_url, formats=['markdown'])
-                all_valid_data.append({"url": cb_url, "content": f"### CRUNCHBASE DATA:\n{getattr(c_scrape, 'markdown', '')}"})
+            tavily = TavilyClient(api_key=tavily_key)
+            # 强化搜索，寻找真正的 Peer Startups
+            query = f"direct startup competitors and alternatives for {name} ({domain}) -AWS -Azure -Google -Microsoft"
+            result = tavily.search(query=query, search_depth="advanced", max_results=5)
+            # 必须使用这个标签，否则 Analyst 认不出
+            comp_text = "### COMPETITIVE INTELLIGENCE:\n"
+            for r in result.get('results', []):
+                comp_text += f"- **{r['title']}** ({r['url']}): {r['content'][:350]}\n"
+            all_valid_data.append({"url": "Tavily-Comp", "content": comp_text})
+        except: pass
+
+    # --- PART 3: Funding & News (NewsAPI) ---
+    if newsapi_key:
+        try:
+            res = requests.get("https://newsapi.org/v2/everything", params={"q": f'"{name}"', "sortBy": "relevancy", "apiKey": newsapi_key}).json()
+            news_text = "### RECENT NEWS:\n"
+            for art in res.get('articles', [])[:5]:
+                news_text += f"- **{art['title']}** ({art['publishedAt'][:10]}): {art.get('description')}\n"
+            all_valid_data.append({"url": "NewsAPI", "content": news_text})
+        except: pass
+
+    # --- PART 4: Market Size (Exa) ---
+    if exa_key:
+        try:
+            import exa_py
+            exa = exa_py.Exa(api_key=exa_key)
+            industry = state.get('industry', name)
+            res = exa.search_and_contents(f"{industry} market size TAM CAGR research report 2024 2025", num_results=3, text={"max_characters": 600})
+            market_text = "### MARKET RESEARCH:\n"
+            for r in res.results:
+                market_text += f"- **{r.title}** ({r.url}): {r.text}\n"
+            all_valid_data.append({"url": "Exa-Market", "content": market_text})
         except: pass
 
     return {"raw_research_data": all_valid_data}

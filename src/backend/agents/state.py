@@ -1,4 +1,4 @@
-from typing import List, TypedDict, Dict, Any
+from typing import List, TypedDict, Dict, Any, Optional
 
 class AgentState(TypedDict):
     """
@@ -34,3 +34,7 @@ class AgentState(TypedDict):
     
     # --- Flow Control ---
     analysis_complete: bool
+
+    # --- Document Generation ---
+    structured_data: Dict[str, Any]        # analyst 提取的结构化 JSON
+    docx_output_path: Optional[str]       # 生成的文件路径

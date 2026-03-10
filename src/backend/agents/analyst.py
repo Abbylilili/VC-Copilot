@@ -1,9 +1,21 @@
 import os
+import re
+import json
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from .state import AgentState
 
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.1)
+
+def extract_structured_json(content: str) -> dict:
+    """从 markdown 末尾提取 ```json ``` 块"""
+    match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
+    if match:
+        try:
+            return json.loads(match.group(1).strip())
+        except json.JSONDecodeError:
+            return {}
+    return {}
 
 def analyst_node(state: AgentState):
     name = state.get('name', 'Startup')
@@ -178,7 +190,7 @@ def analyst_node(state: AgentState):
     - DO NOT list generic infrastructure providers (e.g., AWS, Azure, Google Cloud, IBM) unless the startup is literally building a cloud infrastructure platform. 
     - Focus on other startups, direct product-level rivals, or specific business units of large firms that compete directly with {name}.
 
-    **Positioning Map (MANDATORY TABLE):**
+    **Positioning Map**
     *Instructions: You MUST generate a row for EVERY competitor listed above. 
     Row count MUST equal competitor count. Do not truncate. Do not skip any row.*
 
@@ -253,6 +265,49 @@ def analyst_node(state: AgentState):
     5. **Cite sources** - Reference specific URLs when making factual claims
     6. **Avoid jargon** - Write for a non-technical GP if needed, explain acronyms
 
+    ---
+
+    ## STRUCTURED DATA EXPORT (MANDATORY — Append at the end of your response)
+
+    After your full memo text, append a JSON block between ```json and ``` tags.
+    This block is used for document rendering. Follow this schema EXACTLY:
+    ```json
+    {{
+      "meta": {{
+        "company_name": "{name}",
+        "stage": "",
+        "raise_amount": "",
+        "valuation": "",
+        "sector": "",
+        "date": "",
+        "recommendation": "INVEST|PASS|WATCH",
+        "check_size": ""
+      }},
+      "team": [
+        {{"name": "", "role": "", "background": "", "why_they_win": ""}}
+      ],
+      "metrics": {{
+        "arr": "", "arr_growth": "", "nrr": "",
+        "gross_margin": "", "customers": "", "avg_acv": ""
+      }},
+      "competitors": [
+        {{"name": "", "core_strength": "", "key_weakness": "", "why_we_win": ""}}
+      ],
+      "risks": [
+        {{"risk": "", "severity": "High|Medium|Low", "probability": "High|Medium|Low", "mitigant": ""}}
+      ],
+      "financials": [
+        {{"year": "", "arr": "", "revenue": "", "gross_margin": "", "ebitda_margin": ""}}
+      ],
+      "use_of_proceeds": [
+        {{"category": "", "amount": "", "pct": "", "rationale": ""}}
+      ],
+      "returns": [
+        {{"scenario": "Bear|Base|Bull", "arr_at_exit": "", "multiple": "", "valuation": "", "moic": ""}}
+      ]
+    }}
+    ```
+
     **CRITICAL TABLE FORMATTING (MUST FOLLOW EXACTLY):**
 
     ⚠️ EVERY TABLE ROW MUST BE ON ITS OWN SEPARATE LINE. NO EXCEPTIONS.
@@ -320,7 +375,7 @@ def analyst_node(state: AgentState):
         content = fix_markdown_tables(content)
 
         # Append Citations with better formatting
-        citation_footer = "\n\n---\n\n## 📚 Data Sources & Evidence\n\n"
+        citation_footer = "\n\n# 📚 Data Sources & Evidence\n"
         if sources_summary:
             unique_sources = list(set(sources_summary))
             citation_footer += "\n".join([f"{i+1}. [{url}]({url})" for i, url in enumerate(unique_sources)])
@@ -330,7 +385,18 @@ def analyst_node(state: AgentState):
         content = re.sub(r'^(\s*)\[x\]', r'\1- [x]', content, flags=re.MULTILINE)
         content = re.sub(r'^(\s*)\[X\]', r'\1- [x]', content, flags=re.MULTILINE)
 
-        return {"report_content": content + citation_footer}
+        # Extract structured data for document generation
+        structured_data = extract_structured_json(content)
+        
+        # Clean up the report content for frontend display (remove the JSON block)
+        display_content = re.sub(r'---[\s\S]*?## STRUCTURED DATA EXPORT[\s\S]*?```json[\s\S]*?```', '', content)
+        # Fallback if the above complex regex doesn't match perfectly
+        display_content = re.sub(r'```json[\s\S]*?```', '', display_content).strip()
+
+        return {
+            "report_content": display_content + citation_footer,
+            "structured_data": structured_data
+        }
     except Exception as e:
         print(f"❌ Analyst Error: {e}")
         return {"report_content": f"Failed to generate report: {e}"}

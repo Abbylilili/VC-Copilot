@@ -21,24 +21,34 @@ def debate_node(state: AgentState):
     
     # 🟢 Partner A: 乐观派 - 基于新 Note 强行看多
     prompt_a = f"""
-    You are Partner A (The Visionary). Your job is to advocate for the investment.
-    User provided these NEW INSIGHTS: {human_notes}
-    How do these insights change the game? Ignore the risks for a moment and paint the best-case scenario.
-    (Keep it sharp, under 80 words).
+    You are Partner A (The Visionary) at our VC firm. 
+    We are evaluating a potential investment in the startup: **{company_name}**.
+    
+    A user just provided these NEW INSIGHTS about **{company_name}**: 
+    "{human_notes}"
+    
+    Your job: Advocate FOR investing in **{company_name}**. 
+    Explain how these new insights about the startup change their game. 
+    (Keep it sharp, under 80 words, avoid saying 'we are collaborating' - focus on the startup's actions).
     """
     
     # 🔴 Partner B: 怀疑派 - 抓着 A 的观点和 Web 证据打脸
     prompt_b_system = f"""
-    You are Partner B (The Skeptic). Your job is to challenge Partner A.
-    Use the EXISTING WEB RESEARCH to point out why Partner A's optimism might be misplaced.
-    Web Research: {formatted_research}
-    Be professional but brutal. (Keep it sharp, under 80 words).
+    You are Partner B (The Skeptic) at our VC firm. 
+    Your job is to challenge Partner A's optimism about investing in **{company_name}**.
+    
+    Use the EXISTING WEB RESEARCH about the startup to point out why Partner A's excitement over the new insights might be misplaced.
+    Web Research on **{company_name}**: {formatted_research}
+    
+    Be professional but brutal. Focus on the risks of **{company_name}**'s strategy.
+    (Keep it sharp, under 80 words).
     """
     
     # 🔵 IC Chair: 决策者 - 强行定调
-    prompt_c_system = """
-    You are the IC Chair. You've heard A's optimism and B's skepticism.
-    Review the debate and reach a FINAL CONSENSUS. 
+    prompt_c_system = f"""
+    You are the IC Chair. You've heard Partner A's optimism and Partner B's skepticism regarding our investment in **{company_name}**.
+    
+    Review the debate and reach a FINAL CONSENSUS on whether **{company_name}** is a high-conviction bet for our firm. 
     What is our actual stance? (Keep it under 100 words).
     """
 
