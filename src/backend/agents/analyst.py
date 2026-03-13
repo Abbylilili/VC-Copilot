@@ -26,54 +26,103 @@ def analyst_node(state: AgentState):
     human_notes = state.get('human_notes', "")
     debate_transcript = state.get('debate_transcript', [])
     
-    # 2. Categorize Data (Market vs Founders vs Crunchbase vs Competitors)
-    market_data = []
-    founder_data = []
-    crunchbase_data = []
-    competitor_data = []
+    # 2. Categorize Data — 5 dedicated buckets (not truncated too early)
+    market_data    = []   # website + news + general
+    traction_data  = []   # ### PRODUCT & TRACTION  ← customers, ARR, logos, growth
+    founder_data   = []   # ### FOUNDER DNA
+    crunchbase_data = []  # ### CRUNCHBASE DATA
+    competitor_data = []  # ### COMPETITIVE INTELLIGENCE
     sources_summary = []
-    
+
+    CHAR_LIMIT = 5000     # raised from 2000 so customer names are never cut off
+
     for item in research_items:
-        url = item.get('url', 'Unknown')
+        url     = item.get('url', 'Unknown')
         content = item.get('content', '')
         sources_summary.append(url)
-        
+
         if "### FOUNDER DNA" in content:
-            founder_data.append(f"SOURCE [{url}]:\n{content}")
+            founder_data.append(f"SOURCE [{url}]:\n{content[:CHAR_LIMIT]}")
         elif "### CRUNCHBASE DATA" in content:
-            crunchbase_data.append(f"SOURCE [{url}]:\n{content}")
+            crunchbase_data.append(f"SOURCE [{url}]:\n{content[:CHAR_LIMIT]}")
         elif "### COMPETITIVE INTELLIGENCE" in content:
-            competitor_data.append(f"SOURCE [{url}]:\n{content}")
+            competitor_data.append(f"SOURCE [{url}]:\n{content[:CHAR_LIMIT]}")
+        elif "### PRODUCT & TRACTION" in content:
+            # ★ Keep traction signals in their own bucket — customer logos, ARR, growth
+            traction_data.append(f"SOURCE [{url}]:\n{content[:CHAR_LIMIT]}")
         else:
-            market_data.append(f"SOURCE [{url}]:\n{content[:2000]}")
-    
-    web_research_data_str = "\n".join(market_data) if market_data else "No specific market data found."
-    founder_data_str = "\n".join(founder_data) if founder_data else "No specific founder/team DNA found."
-    cb_data_str = "\n".join(crunchbase_data) if crunchbase_data else "No Crunchbase record found for this entity."
-    comp_data_str = "\n".join(competitor_data) if competitor_data else "No explicit competitive intel found."
+            market_data.append(f"SOURCE [{url}]:\n{content[:CHAR_LIMIT]}")
+
+    traction_data_str      = "\n\n".join(traction_data)    if traction_data    else "No traction/revenue data found."
+    web_research_data_str  = "\n\n".join(market_data)      if market_data      else "No specific market data found."
+    founder_data_str       = "\n\n".join(founder_data)     if founder_data     else "No specific founder/team DNA found."
+    cb_data_str            = "\n\n".join(crunchbase_data)  if crunchbase_data  else "No Crunchbase record found for this entity."
+    comp_data_str          = "\n\n".join(competitor_data)  if competitor_data  else "No explicit competitive intel found."
+
+    print(f"  Data buckets → traction={len(traction_data)} | founder={len(founder_data)} | "
+          f"crunchbase={len(crunchbase_data)} | competitor={len(competitor_data)} | market={len(market_data)}")
     
     # 3. Determine if this is an INITIAL report or a REFINED report
     is_refined = len(debate_transcript) > 0 or len(human_notes) > 0
-    
+    original_report = state.get("original_report", "")
+
     # 4. Format context
     formatted_context = f"### STARTUP: {name} (Location: {state.get('location')})\n"
-    
+
     if human_notes:
-        formatted_context += f"\n### CRITICAL EXPERT NOTES (Added by User):\n{human_notes}\n"
-    
+        formatted_context += f"\n### ⭐ PROPRIETARY EXPERT INTELLIGENCE (Non-Public — Highest Priority):\n{human_notes}\n"
+
     if debate_transcript:
-        formatted_context += f"\n### INTERNAL COMMITTEE BRAINSTORMING TRANSCRIPT:\n" + "\n".join(debate_transcript) + "\n"
-    
+        formatted_context += (
+            f"\n### 🎙️ VIRTUAL IC COMMITTEE DEBATE TRANSCRIPT:\n"
+            + "\n\n".join(debate_transcript)
+            + "\n"
+        )
+
+    if original_report:
+        formatted_context += (
+            f"\n### 📄 V1 MEMO (REFERENCE CONTEXT ONLY — do NOT copy or continue from it):\n"
+            f"The following is the previous version for reference. You MUST regenerate a "
+            f"COMPLETE new report with ALL sections (1–9), integrating expert notes and debate:\n"
+            f"{original_report[:4000]}\n"
+        )
+
     # 5. Dynamic Prompt
     debate_instruction = ""
     if is_refined:
         debate_instruction = """
-        ## 7. Synthesis of Expert/Internal Debate
-        Summarize the key points of disagreement and the final consensus reached during the internal brainstorming session. 
-        How did the new expert notes change our initial hypothesis?
+    ## 9. IC Debate Synthesis & Delta Analysis
+    **What Changed From v1 to v2:**
+    - Which sections were materially updated based on expert notes or debate?
+    - Which initial hypotheses were CONFIRMED by the debate?
+    - Which initial hypotheses were CHALLENGED or REVERSED?
+
+    **Committee Consensus:**
+    - Growth Partner's final position: [summarize A's view]
+    - Risk Analyst's final position: [summarize B's view]
+    - Founder Expert's assessment: [summarize C's view]
+    - IC Chair's verdict: [quote the Chair's exact verdict]
+
+    **Conviction Delta:** Did this debate INCREASE or DECREASE our conviction vs v1? By how much?
         """
     
+    # Build v2-specific instruction prefix
+    refined_prefix = ""
+    if is_refined:
+        refined_prefix = f"""
+    ⚠️ THIS IS A V2 REFINED REPORT — MANDATORY RULES:
+    1. You MUST write a COMPLETE report with ALL sections numbered 1 through 9. No section may be omitted.
+    2. The V1 memo in the context is REFERENCE ONLY. Do NOT copy it. Do NOT continue from it. Rewrite everything fresh.
+    3. Sections 1–4 must be fully rewritten using the original research data.
+    4. Sections 5–8 should be updated to reflect new insights from expert notes and IC debate.
+    5. Section 9 (IC Debate Synthesis) is NEW — add it at the end.
+    6. If expert notes mention a customer/partner (e.g. "Macquarie"), treat it as VERIFIED proprietary intelligence,
+       NOT as press coverage. Label it clearly as "Expert Input" in the Traction section.
+    ---
+    """
+
     system_prompt = f"""
+    {refined_prefix}
     You are a Senior Investment Partner at Sequoia Capital / a16z conducting rigorous due diligence.
     Your task: Generate a **Tier-1 Investment Committee Memo** for: **{name}**.
 
@@ -95,7 +144,17 @@ def analyst_node(state: AgentState):
     ### 3️⃣ FOUNDER & TEAM DNA (Critical for Early Stage)
     {founder_data_str}
 
-    ### 4️⃣ NEWS, PRODUCT & MARKET INTELLIGENCE
+    ### 4️⃣ PRODUCT, TRACTION & CUSTOMER SIGNALS ⭐ (Extract every customer name, ARR figure, partnership)
+    INSTRUCTIONS: Read every line carefully. Pull out:
+    - Named customer logos (e.g. "Macquarie", "ANZ", any enterprise name mentioned)
+    - ARR / MRR / revenue figures (even estimates or ranges)
+    - Partnership announcements, pilot programs, case studies
+    - Headcount / hiring signals (e.g. "hiring 20 engineers")
+    - App store ratings, waitlist numbers, social media growth
+    If any customer name appears anywhere in this section, it MUST be listed under Section 4 "Customer Count / Notable Logos".
+    {traction_data_str}
+
+    ### 5️⃣ NEWS & MARKET INTELLIGENCE
     {web_research_data_str}
 
     **DATA QUALITY PROTOCOL:**
@@ -164,20 +223,26 @@ def analyst_node(state: AgentState):
     ---
 
     ## 4. Traction & Validation (If Available)
+    ⚠️ CRITICAL EXTRACTION RULE: Before writing this section, re-read DATA SOURCE 4️⃣ line by line.
+    Any company name, institution, or brand mentioned as a customer / partner / pilot MUST appear here.
+    Do NOT write ⚠️ INSUFFICIENT DATA if a customer or signal appeared anywhere in the research data.
+
     **Funding Metrics:**
-    - Total Raised: [Extract from Crunchbase]
+    - Total Raised: [Extract from Crunchbase / news — even "undisclosed" is valid]
     - Last Round: [Seed/Series A/B, date, amount]
-    - Notable Investors: [Blue-chip VCs? Angel investors from target industry?]
+    - Notable Investors: [Name every investor mentioned anywhere in the data]
 
     **Product/Revenue Signals:**
-    - Revenue (ARR/MRR if mentioned): [$XXX]
-    - Customer Count: [# of customers, notable logos]
+    - Revenue (ARR/MRR if mentioned): [$XXX — quote the source]
+    - Customer Count: [List EVERY named customer logo found — e.g. "Macquarie, ANZ, …"]
     - Growth Rate: [MoM/YoY if available]
 
     **Social Proof:**
-    - Press coverage (TechCrunch, Bloomberg mentions?)
-    - Partnerships or pilot programs
-    - Waitlist size or early demand signals
+    Use the correct label for each source — DO NOT mislabel expert input as press:
+    - **Expert Input** (proprietary, from analyst notes): [Customer names, partnerships, pilots the analyst mentioned — label as "Per expert intelligence: ..."]
+    - **Press Coverage** (third-party media only — TechCrunch, Bloomberg, AFR, PRNewswire): [cite headline + date]
+    - **Partnerships / Pilots**: [name the partner, distinguish verified vs rumored]
+    - **Demand signals**: [waitlist size, sign-ups, awards — quote number if mentioned]
 
     ---
 
@@ -388,9 +453,20 @@ def analyst_node(state: AgentState):
         # Extract structured data for document generation
         structured_data = extract_structured_json(content)
         
-        # Clean up the report content for frontend display (remove the JSON block)
-        display_content = re.sub(r'---[\s\S]*?## STRUCTURED DATA EXPORT[\s\S]*?```json[\s\S]*?```', '', content)
-        # Fallback if the above complex regex doesn't match perfectly
+        # ── Strip the JSON export block from display content ─────────────
+        # Strategy: split on the STRUCTURED DATA EXPORT heading (safe anchor),
+        # then remove any leftover ```json``` fences.
+        # NEVER use `---[\s\S]*?## STRUCTURED DATA EXPORT` — that regex matches
+        # from the FIRST section separator all the way to the export block,
+        # accidentally deleting sections 1–8.
+        if "## STRUCTURED DATA EXPORT" in content:
+            display_content = content.split("## STRUCTURED DATA EXPORT")[0].rstrip()
+        elif "```json" in content:
+            display_content = content.split("```json")[0].rstrip()
+        else:
+            display_content = content
+
+        # Remove any stray ```json...``` blocks that might remain
         display_content = re.sub(r'```json[\s\S]*?```', '', display_content).strip()
 
         return {

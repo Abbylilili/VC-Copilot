@@ -3,23 +3,32 @@
 import React, { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { 
-  Users, ShieldAlert, FileText, Send, Globe, MapPin, TrendingUp, AlertTriangle, 
-  CheckCircle2, Loader2, Briefcase, Sparkles, RefreshCcw 
+import {
+  Users, ShieldAlert, FileText, TrendingUp, AlertTriangle,
+  CheckCircle2, Loader2, Sparkles, RefreshCcw, UserCheck
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+
+// Persona names matching backend PARTNER_PERSONAS
+const PERSONA_NAMES: Record<string, string> = {
+  A: "Partner A — Growth Investor",
+  B: "Partner B — Risk Analyst",
+  C: "Partner C — Founder Expert",
+  D: "IC Chair — Managing Partner",
+}
 
 export default function InvestmentDashboard() {
   const [loading, setLoading] = useState(false)
   const [brainstorming, setBrainstorming] = useState(false)
   const [refining, setRefining] = useState(false)
+  const [refineError, setRefineError] = useState<string | null>(null)
+  const [reportVersion, setReportVersion] = useState(1)
   const [activeTab, setActiveTab] = useState("notes")
-  
+
   const [formData, setFormData] = useState({ name: "", location: "", website: "", industry: "" })
   const [humanNotes, setHumanNotes] = useState("")
   const [reportId, setReportId] = useState<string | null>(null)
@@ -27,6 +36,7 @@ export default function InvestmentDashboard() {
   const [debate, setDebate] = useState<{id: string, role: string, content: string}[]>([])
 
   const debateEndRef = useRef<HTMLDivElement>(null)
+  const mainScrollRef = useRef<HTMLDivElement>(null)
 
   // 极致平滑滚动：监听辩论内容变化
   useEffect(() => {
@@ -38,6 +48,7 @@ export default function InvestmentDashboard() {
   const handleAnalyze = async () => {
     if (!formData.name) return
     setLoading(true); setReport(null); setReportId(null); setDebate([])
+    setRefineError(null); setReportVersion(1)
     try {
       const res = await fetch("http://localhost:8000/analyze", {
         method: "POST",
@@ -47,6 +58,7 @@ export default function InvestmentDashboard() {
       const data = await res.json()
       if (data.status === "success") {
         setReport(data.analysis); setReportId(data.report_id)
+        mainScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })
       }
     } finally {
       setLoading(false)
@@ -103,18 +115,40 @@ export default function InvestmentDashboard() {
   const handleFinalRefine = async () => {
     if (!reportId) return
     setRefining(true)
+    setRefineError(null)
     try {
-      const transcript = debate.map(d => `${d.role}: ${d.content}`)
+      // Build transcript with full persona names so analyst has context
+      const transcript = debate.map(d => {
+        const name = PERSONA_NAMES[d.role] ?? d.role
+        return `[${name}]: ${d.content}`
+      })
+
       const res = await fetch("http://localhost:8000/refine", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ report_id: reportId, human_notes: humanNotes, debate_transcript: transcript })
+        body: JSON.stringify({
+          report_id: reportId,
+          human_notes: humanNotes,
+          debate_transcript: transcript,
+        })
       })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
+        throw new Error(err.detail || `Server error ${res.status}`)
+      }
+
       const data = await res.json()
       if (data.status === "success") {
         setReport(data.analysis)
-        setActiveTab("notes") // 回到笔记，或者留在辩论
+        setReportVersion(v => v + 1)
+        // Scroll main report area to top so user sees updated content
+        mainScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+      } else {
+        throw new Error("Backend returned non-success status")
       }
+    } catch (err: any) {
+      setRefineError(err.message ?? "Unknown error")
     } finally {
       setRefining(false)
     }
@@ -142,14 +176,21 @@ export default function InvestmentDashboard() {
       {/* 2. Main Area (Scrollable) */}
       <main className="flex-1 flex flex-col bg-white min-w-0 h-screen overflow-hidden">
         <header className="h-14 border-b flex items-center px-8 justify-between shrink-0 bg-white/80 backdrop-blur-md z-20">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <Badge className="bg-slate-900 text-white text-[9px] font-bold px-2 py-0">INTERNAL ONLY</Badge>
             <h2 className="font-bold text-sm text-slate-700 truncate">{report ? `Technical DD: ${formData.name}` : "Startup Intelligence"}</h2>
+            {reportVersion > 1 && (
+              <span className="text-[9px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase tracking-widest">
+                v{reportVersion} · IC Updated
+              </span>
+            )}
           </div>
-          {report && <div className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full border text-xs font-bold shadow-sm shrink-0">Fit Score: {(Object.values(report.scores as Record<string, number>).reduce((a,b)=>a+b,0)/4).toFixed(1)}/10</div>}
+          <div className="flex items-center gap-3 shrink-0">
+            {report && <div className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full border text-xs font-bold shadow-sm">Fit Score: {(Object.values(report.scores as Record<string, number>).reduce((a,b)=>a+b,0)/4).toFixed(1)}/10</div>}
+          </div>
         </header>
-        
-        <div className="flex-1 overflow-y-auto custom-scrollbar h-full bg-white">
+
+        <div ref={mainScrollRef} className="flex-1 overflow-y-auto custom-scrollbar h-full bg-white">
           <div className="max-w-3xl mx-auto p-8 lg:p-16 pb-32">
             {!report && !loading && <div className="h-[60vh] flex flex-col items-center justify-center text-slate-200"><FileText className="w-16 h-16 opacity-50 mb-4" /><p className="text-xs font-bold tracking-widest uppercase">Perform an inquiry to start</p></div>}
             {loading && <div className="space-y-10 animate-pulse pt-4"><div className="h-8 bg-slate-50 rounded w-1/3"></div><div className="h-64 bg-slate-50/50 rounded-2xl border-dashed border-2 flex items-center justify-center"><Loader2 className="w-8 h-8 text-slate-200 animate-spin" /></div></div>}
@@ -187,27 +228,83 @@ export default function InvestmentDashboard() {
             </TabsContent>
 
             <TabsContent value="debate" className="h-full m-0 p-0 flex flex-col overflow-hidden bg-slate-50/50">
-              <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-32">
+              {/* IC Partner Legend */}
+              {debate.length > 0 && (
+                <div className="px-4 pt-4 pb-2 flex gap-2 flex-wrap shrink-0 border-b bg-white">
+                  {[
+                    { role: "A", label: "Growth Investor", sub: "Sequoia style", color: "bg-emerald-500" },
+                    { role: "B", label: "Risk Analyst",    sub: "Tiger style",   color: "bg-rose-500"    },
+                    { role: "C", label: "Founder Expert",  sub: "a16z style",    color: "bg-amber-500"   },
+                    { role: "D", label: "IC Chair",        sub: "Verdict",       color: "bg-blue-600"    },
+                  ].map(p => (
+                    <div key={p.role} className="flex items-center gap-1.5">
+                      <div className={`${p.color} w-2 h-2 rounded-full`} />
+                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">{p.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-32">
                 {debate.length > 0 ? debate.map((msg) => {
-                  let color = "bg-slate-200"; let title = "Partner"; let icon = <Users className="w-3 h-3 text-white" />
-                  if (msg.role === 'A') { color = "bg-emerald-500"; title = "Partner A (Visionary)"; icon = <TrendingUp className="w-3 h-3 text-white" /> }
-                  if (msg.role === 'B') { color = "bg-rose-500"; title = "Partner B (Skeptic)"; icon = <ShieldAlert className="w-3 h-3 text-white" /> }
-                  if (msg.role === 'C') { color = "bg-blue-500"; title = "IC CHAIR (CONSENSUS)"; icon = <CheckCircle2 className="w-3 h-3 text-white" /> }
+                  type PartnerConfig = { color: string; bg: string; title: string; icon: React.ReactNode }
+                  const partners: Record<string, PartnerConfig> = {
+                    A: { color: "bg-emerald-500", bg: "border-emerald-100",  title: "Partner A — Growth Investor",  icon: <TrendingUp  className="w-3 h-3 text-white" /> },
+                    B: { color: "bg-rose-500",    bg: "border-rose-100",     title: "Partner B — Risk Analyst",     icon: <ShieldAlert className="w-3 h-3 text-white" /> },
+                    C: { color: "bg-amber-500",   bg: "border-amber-100",    title: "Partner C — Founder Expert",   icon: <UserCheck   className="w-3 h-3 text-white" /> },
+                    D: { color: "bg-blue-600",    bg: "border-blue-100",     title: "⚖️ IC CHAIR — FINAL VERDICT",  icon: <CheckCircle2 className="w-3 h-3 text-white" /> },
+                  }
+                  const p = partners[msg.role] ?? { color: "bg-slate-400", bg: "border-slate-100", title: msg.role, icon: <Users className="w-3 h-3 text-white" /> }
+                  const isChair = msg.role === "D"
                   return (
-                    <div key={msg.id} className="flex flex-col gap-3 animate-in slide-in-from-right-2 duration-300">
-                      <div className="flex items-center gap-2.5 shrink-0"><div className={`${color} w-6 h-6 rounded-lg flex items-center justify-center shadow-sm`}>{icon}</div><span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{title}</span></div>
-                      <div className="bg-white border border-slate-100 p-5 rounded-2xl shadow-sm text-xs leading-relaxed text-slate-600 font-medium italic relative overflow-hidden group">
-                        <div className="absolute left-0 top-0 w-1 h-full opacity-30" style={{backgroundColor: color.includes('bg-') ? color.replace('bg-', '') : '#94a3b8'}}></div>
-                        "{msg.content || "Thinking..."}"
+                    <div key={msg.id} className="flex flex-col gap-2.5 animate-in slide-in-from-right-2 duration-300">
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <div className={`${p.color} w-6 h-6 rounded-lg flex items-center justify-center shadow-sm`}>{p.icon}</div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{p.title}</span>
+                      </div>
+                      <div className={`bg-white border ${p.bg} p-5 rounded-2xl shadow-sm text-xs leading-relaxed text-slate-700 font-medium relative overflow-hidden ${isChair ? "ring-1 ring-blue-200 bg-blue-50/30" : ""}`}>
+                        <div className={`absolute left-0 top-0 w-1 h-full ${p.color}`} />
+                        <span className={isChair ? "not-italic font-semibold" : "italic"}>
+                          {msg.content || <span className="text-slate-300 animate-pulse">Thinking...</span>}
+                        </span>
                       </div>
                     </div>
                   )
-                }) : <div className="h-[60vh] flex flex-col items-center justify-center text-slate-300 p-12 text-center uppercase text-[10px] tracking-widest font-bold"><Users className="w-12 h-12 opacity-10 mb-4" />Waiting for deliberation...</div>}
+                }) : (
+                  <div className="h-[60vh] flex flex-col items-center justify-center text-slate-300 p-12 text-center">
+                    <Users className="w-12 h-12 opacity-10 mb-4" />
+                    <p className="text-[10px] uppercase tracking-widest font-bold">Add expert notes and start deliberation</p>
+                  </div>
+                )}
                 <div ref={debateEndRef} />
               </div>
-              {debate.length >= 5 && (
-                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent pt-12 border-t border-slate-100 bg-white z-20">
-                  <Button onClick={handleFinalRefine} disabled={refining} className="w-full h-12 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold flex gap-3 shadow-xl transition-all active:scale-95">{refining ? <Loader2 className="animate-spin w-4 h-4" /> : <><RefreshCcw className="w-4 h-4" /> UPDATE MEMO BASED ON CONSENSUS</>}</Button>
+
+              {/* Show "Update Memo" button only after IC Chair has spoken (6 messages) */}
+              {debate.length >= 6 && (
+                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-slate-50 via-slate-50/95 to-transparent pt-12 border-t border-slate-100 z-20">
+                  {refineError && (
+                    <div className="mb-3 text-[10px] text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2 font-medium">
+                      ❌ Error: {refineError}
+                    </div>
+                  )}
+                  {reportVersion > 1 && !refining && !refineError && (
+                    <div className="mb-3 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2 font-medium text-center">
+                      ✅ Memo v{reportVersion} generated — scroll left to read updated report
+                    </div>
+                  )}
+                  <Button
+                    onClick={handleFinalRefine}
+                    disabled={refining}
+                    className="w-full h-12 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold flex gap-3 shadow-xl transition-all active:scale-95"
+                  >
+                    {refining
+                      ? <><Loader2 className="animate-spin w-4 h-4" /> Generating v{reportVersion + 1}...</>
+                      : <><RefreshCcw className="w-4 h-4" /> {reportVersion > 1 ? `Regenerate Memo (v${reportVersion + 1})` : "Generate Updated Memo (v2)"}</>
+                    }
+                  </Button>
+                  <p className="text-center text-[9px] text-slate-400 mt-2 uppercase tracking-widest">
+                    Incorporates IC debate + expert notes → updates left panel
+                  </p>
                 </div>
               )}
             </TabsContent>
