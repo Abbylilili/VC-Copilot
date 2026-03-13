@@ -27,14 +27,14 @@ def analyst_node(state: AgentState):
     debate_transcript = state.get('debate_transcript', [])
     
     # 2. Categorize Data — 5 dedicated buckets (not truncated too early)
-    market_data    = []   # website + news + general
-    traction_data  = []   # ### PRODUCT & TRACTION  ← customers, ARR, logos, growth
-    founder_data   = []   # ### FOUNDER DNA
-    crunchbase_data = []  # ### CRUNCHBASE DATA
-    competitor_data = []  # ### COMPETITIVE INTELLIGENCE
+    market_data    = []  
+    traction_data  = []  
+    founder_data   = []   
+    crunchbase_data = []  
+    competitor_data = [] 
     sources_summary = []
 
-    CHAR_LIMIT = 5000     # raised from 2000 so customer names are never cut off
+    CHAR_LIMIT = 5000     
 
     for item in research_items:
         url     = item.get('url', 'Unknown')
