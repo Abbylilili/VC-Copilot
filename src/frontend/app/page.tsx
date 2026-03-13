@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Users, ShieldAlert, FileText, TrendingUp, AlertTriangle,
-  CheckCircle2, Loader2, Sparkles, RefreshCcw, UserCheck
+  CheckCircle2, Loader2, Briefcase, Sparkles, RefreshCcw, UserCheck
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
