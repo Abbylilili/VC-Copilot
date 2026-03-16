@@ -17,11 +17,11 @@ def document_generator_node(state: AgentState):
     scores = state.get('scores', {})
     vote_summary = state.get('vote_summary', '')
     final_score = state.get('final_score', 0)
-    
+
     if not structured_data:
         print("⚠️ No structured data available, skipping doc generation")
         return {"docx_output_path": None}
-    
+
     # 合并 scorer 的分数进 structured_data
     structured_data['scorecard'] = [
         {"dimension": "Team DNA",          "score": scores.get('team_dna', 0)},
@@ -31,10 +31,14 @@ def document_generator_node(state: AgentState):
         {"dimension": "Overall Conviction","score": round(final_score)},
     ]
     structured_data['vote_summary'] = vote_summary
-    
+
+    # Sanitize name for use in file paths (strip URLs, special chars)
+    import re as _re
+    safe_name = _re.sub(r'https?://|[^\w\-]', '_', name).strip('_') or 'Company'
+
     # 写入临时 JSON 文件
-    temp_json_path = f"/tmp/{name.replace(' ', '_')}_data.json"
-    output_path = f"/tmp/{name.replace(' ', '_')}_memo.docx"
+    temp_json_path = f"/tmp/{safe_name}_data.json"
+    output_path = f"/tmp/{safe_name}_memo.docx"
     
     with open(temp_json_path, 'w') as f:
         json.dump(structured_data, f, indent=2)

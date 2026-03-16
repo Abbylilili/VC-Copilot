@@ -139,6 +139,8 @@ async def analyze_startup(request: AnalysisRequest):
         res = supabase.table("analysis_reports").insert(report_data).execute()
         return {"status": "success", "report_id": res.data[0]["id"], "analysis": final_output}
     except Exception as e:
+        import traceback
+        print(f"❌ [/analyze] Error: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -197,7 +199,7 @@ Name: {company_name} | Industry: {industry} | Location: {location}
 {formatted_research if formatted_research else "No public research available."}
 """.strip()
 
-            llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.85, streaming=True)
+            llm = ChatOpenAI(model="gpt-4o", temperature=0.85, streaming=True)
             transcript: list[str] = []
 
             # ── Streaming helper ──────────────────────────────────────
